@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="ky">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🚕 Кара-Куль Такси</title>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <!-- Leaflet CSS (Бекер карта) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* ======== LOGIN SCREEN ======== */
+        .login-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10000; transition: opacity 0.5s;
+        }
+
+        .login-screen.hidden { opacity: 0; pointer-events: none; }
+
+        .login-logo {
+            font-size: 80px; margin-bottom: 20px; animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        .login-title {
+            color: white; font-size: 32px; font-weight: bold; margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .login-subtitle {
+            color: rgba(255,255,255,0.8); font-size: 16px; margin-bottom: 40px;
+        }
+
+        .role-selector {
+            display: flex; gap: 15px; margin-bottom: 30px;
+        }
+
+        .role-btn {
+            padding: 15px 30px; border: 2px solid rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.1); color: white; border-radius: 15px;
+            cursor: pointer; font-size: 16px; transition: all 0.3s;
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+        }
+
+        .role-btn:hover, .role-btn.active {
+            background: white; color: #1a73e8; border-color: white;
+            transform: scale(1.05);
+        }
+
+        .role-btn i { font-size: 28px; }
+
+        .google-btn {
+            display: flex; align-items: center; gap: 12px;
+            background: white; color: #333; padding: 15px 40px;
+            border-radius: 50px; border: none; font-size: 16px;
+            font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+
+        .google-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+
+        .google-btn img { width: 24px; height: 24px; }
+
+        .login-footer {
+            position: absolute; bottom: 30px; color: rgba(255,255,255,0.6);
+            font-size: 12px;
+        }
+
+        /* ======== LOADING ======== */
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center;
+            z-index: 9999;
+        }
+
+        .loading-overlay.active { display: flex; }
+
+        .spinner {
+            width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: white; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ======== MAIN APP ======== */
+        .app-container {
+            display: none; height: 100vh; flex-direction: column;
+        }
+
+        .app-container.active { display: flex; }
+
+        /* ======== HEADER ======== */
+        .header {
+            background: #1a73e8; color: white; padding: 12px 15px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 100;
+        }
+
+        .header-left { display: flex; align-items: center; gap: 10px; }
+
+        .header-avatar {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: white; overflow: hidden; cursor: pointer;
+        }
+
+        .header-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+        .header-info h3 { font-size: 16px; margin: 0; }
+        .header-info p { font-size: 12px; opacity: 0.8; margin: 0; }
+
+        .header-status {
+            padding: 5px 12px; border-radius: 20px; font-size: 12px;
+            font-weight: bold; cursor: pointer;
+        }
+
+        .status-online { background: #4caf50; }
+        .status-offline { background: #f44336; }
+        .status-busy { background: #ff9800; }
+
+        /* ======== MAP ======== */
+        #map {
+            flex: 1; width: 100%; z-index: 1;
+        }
+
+        /* ======== BOTTOM PANEL ======== */
+        .bottom-panel {
+            background: white; border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+            padding: 20px; z-index: 100;
+            max-height: 60vh; overflow-y: auto;
+            transition: transform 0.3s;
+        }
+
+        .panel-handle {
+            width: 40px; height: 4px; background: #ddd;
+            border-radius: 2px; margin: 0 auto 15px;
+        }
+
+        /* ======== ORDER FORM ======== */
+        .order-form h3 {
+            font-size: 18px; margin-bottom: 15px; color: #333;
+        }
+
+        .input-group {
+            display: flex; align-items: center; gap: 10px;
+            background: #f5f5f5; padding: 12px 15px;
+            border-radius: 12px; margin-bottom: 12px;
+        }
+
+        .input-group i { color: #1a73e8; font-size: 18px; width: 20px; }
+
+        .input-group input {
+            flex: 1; border: none; background: transparent;
+            font-size: 15px; outline: none;
+        }
+
+        .input-group .pickup-dot { color: #4caf50; }
+        .input-group .dropoff-dot { color: #f44336; }
+
+        .rate-selector {
+            display: flex; gap: 10px; margin: 15px 0;
+            overflow-x: auto; padding-bottom: 5px;
+        }
+
+        .rate-card {
+            flex: 1; min-width: 100px; padding: 15px;
+            border: 2px solid #e0e0e0; border-radius: 12px;
+            text-align: center; cursor: pointer; transition: all 0.3s;
+        }
+
+        .rate-card:hover, .rate-card.active {
+            border-color: #1a73e8; background: #e3f2fd;
+        }
+
+        .rate-card i { font-size: 28px; color: #1a73e8; margin-bottom: 8px; }
+        .rate-card h4 { font-size: 14px; margin-bottom: 5px; }
+        .rate-card p { font-size: 12px; color: #666; }
+        .rate-card .price { font-size: 18px; font-weight: bold; color: #1a73e8; }
+
+        .order-btn {
+            width: 100%; padding: 16px; background: #1a73e8;
+            color: white; border: none; border-radius: 12px;
+            font-size: 16px; font-weight: bold; cursor: pointer;
+            transition: all 0.3s; margin-top: 10px;
+        }
+
+        .order-btn:hover { background: #1557b0; transform: translateY(-1px); }
+        .order-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* ======== DRIVER PANEL ======== */
+        .driver-panel { text-align: center; padding: 20px; }
+
+        .driver-toggle {
+            width: 200px; height: 200px; border-radius: 50%;
+            border: 8px solid #e0e0e0; margin: 20px auto;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.5s;
+        }
+
+        .driver-toggle.online {
+            border-color: #4caf50; background: #e8f5e9;
+            box-shadow: 0 0 30px rgba(76,175,80,0.3);
+        }
+
+        .driver-toggle i { font-size: 60px; color: #666; transition: all 0.3s; }
+        .driver-toggle.online i { color: #4caf50; }
+
+        .driver-toggle h3 { margin-top: 10px; font-size: 18px; }
+
+        .driver-stats {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 15px; margin-top: 20px;
+        }
+
+        .stat-card {
+            background: #f5f5f5; padding: 15px; border-radius: 12px;
+        }
+
+        .stat-card h4 { font-size: 24px; color: #1a73e8; }
+        .stat-card p { font-size: 12px; color: #666; margin-top: 5px; }
+
+        /* ======== RIDE STATUS ======== */
+        .ride-status {
+            background: white; padding: 20px; border-radius: 15px;
+            margin-bottom: 15px;
+        }
+
+        .status-steps {
+            display: flex; justify-content: space-between; margin: 20px 0;
+            position: relative;
+        }
+
+        .status-steps::before {
+            content: ''; position: absolute; top: 15px; left: 10%; right: 10%;
+            height: 3px; background: #e0e0e0; z-index: 0;
+        }
+
+        .status-step {
+            display: flex; flex-direction: column; align-items: center;
+            z-index: 1; position: relative;
+        }
+
+        .step-circle {
+            width: 30px; height: 30px; border-radius: 50%;
+            background: #e0e0e0; display: flex; align-items: center; justify-content: center;
+            font-size: 14px; color: white; transition: all 0.3s;
+        }
+
+        .step-circle.active { background: #1a73e8; }
+        .step-circle.completed { background: #4caf50; }
+
+        .step-label { font-size: 10px; margin-top: 5px; color: #666; }
+
+        /* ======== DRIVER CARD ======== */
+        .driver-card {
+            display: flex; align-items: center; gap: 15px;
+            background: #f8f9fa; padding: 15px; border-radius: 12px;
+            margin-bottom: 10px;
+        }
+
+        .driver-card img {
+            width: 50px; height: 50px; border-radius: 50%; object-fit: cover;
+        }
+
+        .driver-card-info h4 { font-size: 15px; }
+        .driver-card-info p { font-size: 12px; color: #666; }
+        .driver-card-rating { color: #ffc107; font-size: 14px; }
+
+        /* ======== MODALS ======== */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center;
+            z-index: 1000; padding: 20px;
+        }
+
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: white; border-radius: 20px; padding: 30px;
+            max-width: 400px; width: 100%; max-height: 90vh; overflow-y: auto;
+            animation: slideUp 0.3s;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal h2 { margin-bottom: 20px; color: #333; }
+
+        .modal-input {
+            width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0;
+            border-radius: 10px; font-size: 15px; margin-bottom: 15px;
+            outline: none; transition: border-color 0.3s;
+        }
+
+        .modal-input:focus { border-color: #1a73e8; }
+
+        .modal-btn {
+            width: 100%; padding: 14px; border: none; border-radius: 10px;
+            font-size: 15px; font-weight: bold; cursor: pointer; transition: all 0.3s;
+        }
+
+        .modal-btn-primary { background: #1a73e8; color: white; }
+        .modal-btn-primary:hover { background: #1557b0; }
+
+        .modal-btn-secondary { background: #f5f5f5; color: #333; margin-top: 10px; }
+        .modal-btn-secondary:hover { background: #e0e0e0; }
+
+        .modal-close {
+            position: absolute; top: 15px; right: 15px;
+            background: none; border: none; font-size: 24px; cursor: pointer;
+        }
+
+        /* ======== NOTIFICATIONS ======== */
+        .notification-toast {
+            position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-100px);
+            background: white; padding: 15px 25px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 1001;
+            display: flex; align-items: center; gap: 12px;
+            transition: transform 0.3s; max-width: 90%;
+        }
+
+        .notification-toast.show { transform: translateX(-50%) translateY(0); }
+
+        .notification-toast.success { border-left: 4px solid #4caf50; }
+        .notification-toast.error { border-left: 4px solid #f44336; }
+        .notification-toast.info { border-left: 4px solid #1a73e8; }
+
+        /* ======== SMS VERIFICATION ======== */
+        .sms-code-inputs {
+            display: flex; gap: 10px; justify-content: center; margin: 20px 0;
+        }
+
+        .sms-code-input {
+            width: 50px; height: 60px; text-align: center; font-size: 24px;
+            border: 2px solid #e0e0e0; border-radius: 10px; outline: none;
+        }
+
+        .sms-code-input:focus { border-color: #1a73e8; }
+
+        /* ======== RIDE REQUEST CARD (Driver) ======== */
+        .ride-request {
+            background: white; border-radius: 15px; padding: 20px;
+            margin-bottom: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .ride-request-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .ride-request-price {
+            font-size: 24px; font-weight: bold; color: #1a73e8;
+        }
+
+        .ride-request-actions {
+            display: flex; gap: 10px; margin-top: 15px;
+        }
+
+        .btn-accept {
+            flex: 1; padding: 12px; background: #4caf50; color: white;
+            border: none; border-radius: 10px; font-size: 15px; font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn-reject {
+            flex: 1; padding: 12px; background: #f5f5f5; color: #666;
+            border: none; border-radius: 10px; font-size: 15px;
+            cursor: pointer;
+        }
+
+        /* ======== RESPONSIVE ======== */
+        @media (max-width: 480px) {
+            .login-title { font-size: 24px; }
+            .role-selector { flex-direction: column; width: 80%; }
+            .rate-selector { flex-wrap: wrap; }
+            .rate-card { min-width: calc(50% - 5px); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ========== LOADING OVERLAY ========== -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+</div>
+
+<!-- ========== NOTIFICATION TOAST ========== -->
+<div class="notification-toast" id="notificationToast">
+    <i class="fas fa-info-circle"></i>
+    <span id="toastMessage"></span>
+</div>
+
+<!-- ========== LOGIN SCREEN ========== -->
+<div class="login-screen" id="loginScreen">
+    <div class="login-logo">🚕</div>
+    <h1 class="login-title">Кара-Куль Такси</h1>
+    <p class="login-subtitle">Шаарыбыздын эң ыңгайлуу такси кызматы</p>
+
+    <div class="role-selector">
+        <button class="role-btn active" data-role="client" onclick="selectRole('client')">
+            <i class="fas fa-user"></i>
+            <span>Кардар</span>
+        </button>
+        <button class="role-btn" data-role="driver" onclick="selectRole('driver')">
+            <i class="fas fa-car"></i>
+            <span>Айдоочу</span>
+        </button>
+    </div>
+
+    <button class="google-btn" onclick="signInWithGoogle()">
+        <img src="https://www.google.com/favicon.ico" alt="Google">
+        <span>Google менен кирүү</span>
+    </button>
+
+    <p class="login-footer">© 2026 Кара-Куль Такси. Бардык укуктар корголгон.</p>
+</div>
+
+<!-- ========== MAIN APP ========== -->
+<div class="app-container" id="appContainer">
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <div class="header-avatar" onclick="showProfile()">
+                <img src="" alt="Avatar" id="userAvatar">
+            </div>
+            <div class="header-info">
+                <h3 id="userName">Колдонуучу</h3>
+                <p id="userRole">Кардар</p>
+            </div>
+        </div>
+        <div class="header-status status-offline" id="driverStatus" onclick="toggleDriverStatus()" style="display:none;">
+            Офлайн
+        </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Bottom Panel -->
+    <div class="bottom-panel" id="bottomPanel">
+        <div class="panel-handle"></div>
+        <div id="panelContent">
+            <!-- Dynamic content -->
+        </div>
+    </div>
+</div>
+
+<!-- ========== SMS VERIFICATION MODAL ========== -->
+<div class="modal-overlay" id="smsModal">
+    <div class="modal">
+        <h2>📱 Телефон номериңизди тастыктаңыз</h2>
+        <p style="color:#666; margin-bottom:20px;">Биз сизге SMS код жөнөттүк</p>
+        <input type="tel" class="modal-input" id="phoneInput" placeholder="+996XXXXXXXXX" value="+996">
+        <button class="modal-btn modal-btn-primary" onclick="sendSMSCode()">Код жөнөтүү</button>
+
+        <div id="smsCodeSection" style="display:none; margin-top:20px;">
+            <p style="text-align:center; margin-bottom:15px;">Кодду киргизиңиз:</p>
+            <div class="sms-code-inputs">
+                <input type="text" class="sms-code-input" maxlength="1" oninput="moveToNext(this, 0)">
+                <input type="text" class="sms-code-input" maxlength="1" oninput="moveToNext(this, 1)">
+                <input type="text" class="sms-code-input" maxlength="1" oninput="moveToNext(this, 2)">
+                <input type="text" class="sms-code-input" maxlength="1" oninput="moveToNext(this, 3)">
+                <input type="text" class="sms-code-input" maxlength="1" oninput="moveToNext(this, 4)">
+                <input type="text" class="sms-code-input" maxlength="1" oninput="verifySMSCode()">
+            </div>
+            <button class="modal-btn modal-btn-secondary" onclick="resendSMS()">Кайра жөнөтүү</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== DRIVER REGISTRATION MODAL ========== -->
+<div class="modal-overlay" id="driverRegModal">
+    <div class="modal">
+        <h2>🚗 Айдоочу каттоо</h2>
+        <p style="color:#666; margin-bottom:20px;">Машинаңыздын маалыматтарын киргизиңиз</p>
+
+        <input type="text" class="modal-input" id="carBrand" placeholder="Автоунаанын маркасы (мисалы: Toyota)">
+        <input type="text" class="modal-input" id="carModel" placeholder="Автоунаанын модели (мисалы: Camry)">
+        <input type="text" class="modal-input" id="carNumber" placeholder="Мамлекеттик номер (мисалы: 01KG123ABC)">
+        <input type="text" class="modal-input" id="carColor" placeholder="Түсү (мисалы: Ак)">
+        <input type="number" class="modal-input" id="carYear" placeholder="Чыгарылган жылы (мисалы: 2020)">
+        <input type="text" class="modal-input" id="licenseNumber" placeholder="Водительское удостоверение №">
+        <input type="tel" class="modal-input" id="driverPhone" placeholder="Телефон номери (+996XXXXXXXXX)" value="+996">
+
+        <button class="modal-btn modal-btn-primary" onclick="completeDriverRegistration()">Сактоо</button>
+    </div>
+</div>
+
+<!-- ========== RIDE DETAILS MODAL ========== -->
+<div class="modal-overlay" id="rideDetailsModal">
+    <div class="modal">
+        <h2>🚕 Жүрүш маалыматтары</h2>
+        <div id="rideDetailsContent"></div>
+        <button class="modal-btn modal-btn-secondary" onclick="closeModal('rideDetailsModal')">Жабуу</button>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// FIREBASE CONFIGURATION
+// ============================================================
+const firebaseConfig = {
+    apiKey: "AIzaSyAkzKPbuUP94xngaN...",
+    authDomain: "coffee-spark-ai-barista.firebaseapp.com",
+    databaseURL: "https://coffee-spark-ai-barista-default-rtdb.firebaseio.com",
+    projectId: "coffee-spark-ai-barista",
+    storageBucket: "coffee-spark-ai-barista.appspot.com",
+    messagingSenderId: "330861045532",
+    appId: "1:330861045532:web:88d3eaae9ee94393c0cfcd9"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+// ============================================================
+// GLOBAL VARIABLES
+// ============================================================
+const API_BASE = 'api/';
+let currentUser = null;
+let currentToken = null;
+let selectedRole = 'client';
+let map = null;
+let markers = [];
+let driverMarker = null;
+let locationUpdateInterval = null;
+let activeRide = null;
+let watchPositionId = null;
+
+// Кара-Куль координаталары
+const KARAKOL_CENTER = [42.4907, 78.3936];
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    checkAuthState();
+});
+
+function checkAuthState() {
+    const token = localStorage.getItem('taxi_token');
+    if (token) {
+        currentToken = token;
+        loadUserProfile();
+    }
+}
+
+// ============================================================
+// AUTH FUNCTIONS
+// ============================================================
+function selectRole(role) {
+    selectedRole = role;
+    document.querySelectorAll('.role-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.role === role);
+    });
+}
+
+async function signInWithGoogle() {
+    showLoading(true);
+
+    try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        const result = await firebase.auth().signInWithPopup(provider);
+        const idToken = await result.user.getIdToken();
+
+        const response = await fetch(`${API_BASE}auth.php?action=google-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                idToken: idToken,
+                role: selectedRole,
+                fcmToken: ''
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentToken = data.token;
+            currentUser = data.user;
+            localStorage.setItem('taxi_token', data.token);
+            localStorage.setItem('taxi_user', JSON.stringify(data.user));
+
+            showToast('Кош келдиңиз, ' + data.user.name + '!', 'success');
+
+            // Айдоочу болсо жана профили толук толтурулбаса
+            if (data.user.role === 'driver' && data.is_new_user) {
+                showModal('driverRegModal');
+            } else if (!data.user.phone_verified) {
+                showModal('smsModal');
+            } else {
+                initApp();
+            }
+        } else {
+            showToast(data.error || 'Кирүү мүмкүн болбоду', 'error');
+        }
+    } catch (error) {
+        console.error('Auth error:', error);
+        showToast('Google авторизациясы иштебей жатат', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function loadUserProfile() {
+    try {
+        const response = await fetch(`${API_BASE}auth.php?action=profile`, {
+            headers: { 'Authorization': 'Bearer ' + currentToken }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentUser = data.user;
+            localStorage.setItem('taxi_user', JSON.stringify(data.user));
+
+            if (!data.user.phone_verified) {
+                showModal('smsModal');
+            } else {
+                initApp();
+            }
+        } else {
+            logout();
+        }
+    } catch (error) {
+        logout();
+    }
+}
+
+// ============================================================
+// SMS VERIFICATION
+// ============================================================
+async function sendSMSCode() {
+    const phone = document.getElementById('phoneInput').value;
+
+    if (!phone.match(/^\+996[0-9]{9}$/)) {
+        showToast('Телефон форматы туура эмес', 'error');
+        return;
+    }
+
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}auth.php?action=send-sms-code`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({ phone: phone })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('smsCodeSection').style.display = 'block';
+            showToast('Код жөнөтүлдү!', 'success');
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('SMS жөнөтүү мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function moveToNext(input, index) {
+    if (input.value.length === 1) {
+        const inputs = document.querySelectorAll('.sms-code-input');
+        if (index < inputs.length - 1) {
+            inputs[index + 1].focus();
+        }
+    }
+}
+
+async function verifySMSCode() {
+    const inputs = document.querySelectorAll('.sms-code-input');
+    const code = Array.from(inputs).map(i => i.value).join('');
+    const phone = document.getElementById('phoneInput').value;
+
+    if (code.length !== 6) return;
+
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}auth.php?action=verify-sms-code`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({ phone: phone, code: code })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentToken = data.token;
+            localStorage.setItem('taxi_token', data.token);
+            closeModal('smsModal');
+            showToast('Телефон тастыкталды!', 'success');
+            initApp();
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Кодду текшерүү мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function resendSMS() {
+    sendSMSCode();
+}
+
+// ============================================================
+// DRIVER REGISTRATION
+// ============================================================
+async function completeDriverRegistration() {
+    const data = {
+        car_brand: document.getElementById('carBrand').value,
+        car_model: document.getElementById('carModel').value,
+        car_number: document.getElementById('carNumber').value.toUpperCase(),
+        car_color: document.getElementById('carColor').value,
+        car_year: parseInt(document.getElementById('carYear').value),
+        license_number: document.getElementById('licenseNumber').value,
+        phone: document.getElementById('driverPhone').value
+    };
+
+    // Валидация
+    const errors = [];
+    if (!data.car_brand) errors.push('Маркасын киргизиңиз');
+    if (!data.car_model) errors.push('Моделин киргизиңиз');
+    if (!data.car_number.match(/^[0-9]{2}[A-Z]{2,3}[0-9]{3}$/)) errors.push('Номер туура эмес');
+    if (!data.car_color) errors.push('Түсүн киргизиңиз');
+    if (!data.car_year || data.car_year < 1990) errors.push('Жылы туура эмес');
+    if (!data.phone.match(/^\+996[0-9]{9}$/)) errors.push('Телефон туура эмес');
+
+    if (errors.length > 0) {
+        showToast(errors.join(', '), 'error');
+        return;
+    }
+
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}register.php?action=complete-driver-profile`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            closeModal('driverRegModal');
+            showToast('Профиль сакталды! Администратор тастыктайт.', 'success');
+
+            // SMS тастыктоо
+            if (!currentUser.phone_verified) {
+                document.getElementById('phoneInput').value = data.phone;
+                showModal('smsModal');
+            } else {
+                initApp();
+            }
+        } else {
+            showToast(result.error || 'Каттоо мүмкүн болбоду', 'error');
+        }
+    } catch (error) {
+        showToast('Каттоо мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ============================================================
+// APP INITIALIZATION
+// ============================================================
+function initApp() {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appContainer').classList.add('active');
+
+    // User info
+    document.getElementById('userName').textContent = currentUser.name;
+    document.getElementById('userRole').textContent = currentUser.role === 'driver' ? 'Айдоочу' : 'Кардар';
+    document.getElementById('userAvatar').src = currentUser.avatar || 'https://via.placeholder.com/40';
+
+    // Driver status button
+    if (currentUser.role === 'driver') {
+        document.getElementById('driverStatus').style.display = 'block';
+    }
+
+    initMap();
+
+    if (currentUser.role === 'client') {
+        showClientPanel();
+        startDriverUpdates();
+    } else {
+        showDriverPanel();
+        startLocationTracking();
+    }
+
+    // Check active ride
+    checkActiveRide();
+}
+
+// ============================================================
+// MAP
+// ============================================================
+function initMap() {
+    map = L.map('map', { zoomControl: false }).setView(KARAKOL_CENTER, 14);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // Кара-Куль чегарасы (болжолдуу)
+    L.circle(KARAKOL_CENTER, {
+        color: '#1a73e8',
+        fillColor: '#1a73e8',
+        fillOpacity: 0.05,
+        radius: 15000
+    }).addTo(map);
+}
+
+function addDriverMarker(driver) {
+    const icon = L.divIcon({
+        className: 'driver-marker',
+        html: `<div style="background:#1a73e8; color:white; padding:5px 10px; border-radius:20px; font-size:12px; white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,0.3);">
+            <i class="fas fa-taxi"></i> ${driver.car || 'Taxi'}
+        </div>`,
+        iconSize: [80, 30],
+        iconAnchor: [40, 15]
+    });
+
+    const marker = L.marker([driver.position.lat, driver.position.lng], { icon: icon }).addTo(map);
+    marker.driverId = driver.driver_id;
+
+    marker.bindPopup(`
+        <div style="text-align:center;">
+            <img src="${driver.avatar || ''}" style="width:50px;height:50px;border-radius:50%;margin-bottom:5px;">
+            <h4>${driver.name}</h4>
+            <p>${driver.car} (${driver.car_number})</p>
+            <p>⭐ ${driver.rating} | 🚗 ${driver.total_rides} жүрүш</p>
+            <button onclick="selectDriver(${driver.driver_id})" style="background:#1a73e8;color:white;border:none;padding:8px 15px;border-radius:8px;cursor:pointer;">
+                Тандау
+            </button>
+        </div>
+    `);
+
+    markers.push(marker);
+    return marker;
+}
+
+function clearMarkers() {
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+}
+
+function updateMyLocation(lat, lng) {
+    if (driverMarker) {
+        driverMarker.setLatLng([lat, lng]);
+    } else {
+        const icon = L.divIcon({
+            className: 'my-location',
+            html: '<div style="background:#4caf50; width:15px; height:15px; border-radius:50%; border:3px solid white; box-shadow:0 0 10px rgba(76,175,80,0.5);"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+        driverMarker = L.marker([lat, lng], { icon: icon }).addTo(map);
+    }
+    map.setView([lat, lng], 16);
+}
+
+// ============================================================
+// CLIENT PANEL
+// ============================================================
+function showClientPanel() {
+    const panel = document.getElementById('panelContent');
+    panel.innerHTML = `
+        <div class="order-form">
+            <h3>🚕 Такси чакыруу</h3>
+
+            <div class="input-group">
+                <i class="fas fa-circle pickup-dot"></i>
+                <input type="text" id="pickupAddress" placeholder="Башталыш дареги" readonly>
+            </div>
+
+            <div class="input-group">
+                <i class="fas fa-circle dropoff-dot"></i>
+                <input type="text" id="dropoffAddress" placeholder="Бара турган дарек" 
+                    onclick="selectDropoffLocation()">
+            </div>
+
+            <div class="rate-selector">
+                <div class="rate-card active" data-rate="Эконом" onclick="selectRate(this)">
+                    <i class="fas fa-car"></i>
+                    <h4>Эконом</h4>
+                    <p>Баштапкы 50 сом</p>
+                    <div class="price" id="priceEconom">--</div>
+                </div>
+                <div class="rate-card" data-rate="Комфорт" onclick="selectRate(this)">
+                    <i class="fas fa-car-side"></i>
+                    <h4>Комфорт</h4>
+                    <p>Баштапкы 70 сом</p>
+                    <div class="price" id="priceComfort">--</div>
+                </div>
+                <div class="rate-card" data-rate="Бизнес" onclick="selectRate(this)">
+                    <i class="fas fa-car-alt"></i>
+                    <h4>Бизнес</h4>
+                    <p>Баштапкы 120 сом</p>
+                    <div class="price" id="priceBusiness">--</div>
+                </div>
+            </div>
+
+            <button class="order-btn" id="orderBtn" onclick="createRide()" disabled>
+                🚕 Такси чакыруу
+            </button>
+        </div>
+    `;
+
+    // Get current location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                updateMyLocation(lat, lng);
+                document.getElementById('pickupAddress').value = 'Учурдагы жайгашкан жер';
+                document.getElementById('pickupAddress').dataset.lat = lat;
+                document.getElementById('pickupAddress').dataset.lng = lng;
+            },
+            () => {
+                document.getElementById('pickupAddress').value = 'Кара-Куль борбору';
+                document.getElementById('pickupAddress').dataset.lat = KARAKOL_CENTER[0];
+                document.getElementById('pickupAddress').dataset.lng = KARAKOL_CENTER[1];
+            }
+        );
+    }
+}
+
+function selectRate(card) {
+    document.querySelectorAll('.rate-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+}
+
+function selectDropoffLocation() {
+    showToast('Картадан бара турган жерди тандаңыз', 'info');
+
+    map.once('click', async (e) => {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+
+        // Болжолдуу дарек (reverse geocoding)
+        document.getElementById('dropoffAddress').value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        document.getElementById('dropoffAddress').dataset.lat = lat;
+        document.getElementById('dropoffAddress').dataset.lng = lng;
+
+        // Баа эсептөө
+        await estimatePrice();
+    });
+}
+
+async function estimatePrice() {
+    const pickupLat = parseFloat(document.getElementById('pickupAddress').dataset.lat);
+    const pickupLng = parseFloat(document.getElementById('pickupAddress').dataset.lng);
+    const dropoffLat = parseFloat(document.getElementById('dropoffAddress').dataset.lat);
+    const dropoffLng = parseFloat(document.getElementById('dropoffAddress').dataset.lng);
+
+    if (!dropoffLat || !dropoffLng) return;
+
+    try {
+        const response = await fetch(`${API_BASE}ride.php?action=estimate-price`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({
+                pickup_lat: pickupLat,
+                pickup_lng: pickupLng,
+                dropoff_lat: dropoffLat,
+                dropoff_lng: dropoffLng
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('priceEconom').textContent = data.prices[0].estimated_price + ' сом';
+            document.getElementById('priceComfort').textContent = data.prices[1].estimated_price + ' сом';
+            document.getElementById('priceBusiness').textContent = data.prices[2].estimated_price + ' сом';
+            document.getElementById('orderBtn').disabled = false;
+        }
+    } catch (error) {
+        console.error('Price estimate error:', error);
+    }
+}
+
+async function createRide() {
+    const pickupLat = parseFloat(document.getElementById('pickupAddress').dataset.lat);
+    const pickupLng = parseFloat(document.getElementById('pickupAddress').dataset.lng);
+    const dropoffLat = parseFloat(document.getElementById('dropoffAddress').dataset.lat);
+    const dropoffLng = parseFloat(document.getElementById('dropoffAddress').dataset.lng);
+    const rateType = document.querySelector('.rate-card.active').dataset.rate;
+
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}ride.php?action=create`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({
+                pickup_lat: pickupLat,
+                pickup_lng: pickupLng,
+                pickup_address: document.getElementById('pickupAddress').value,
+                dropoff_lat: dropoffLat,
+                dropoff_lng: dropoffLng,
+                dropoff_address: document.getElementById('dropoffAddress').value,
+                rate_type: rateType,
+                payment_method: 'cash'
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            activeRide = data.ride;
+            showToast('Заказ түзүлдү! Айдоочуну күтүңүз...', 'success');
+            showRideStatus(data.ride);
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Заказ түзүү мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function showRideStatus(ride) {
+    const panel = document.getElementById('panelContent');
+    panel.innerHTML = `
+        <div class="ride-status">
+            <h3>🚕 Жүрүш №${ride.id}</h3>
+            <div class="status-steps">
+                <div class="status-step">
+                    <div class="step-circle active" id="step1"><i class="fas fa-search"></i></div>
+                    <span class="step-label">Издөө</span>
+                </div>
+                <div class="status-step">
+                    <div class="step-circle" id="step2"><i class="fas fa-car"></i></div>
+                    <span class="step-label">Жолго чыкты</span>
+                </div>
+                <div class="status-step">
+                    <div class="step-circle" id="step3"><i class="fas fa-user"></i></div>
+                    <span class="step-label">Жетти</span>
+                </div>
+                <div class="status-step">
+                    <div class="step-circle" id="step4"><i class="fas fa-flag-checkered"></i></div>
+                    <span class="step-label">Бүттү</span>
+                </div>
+            </div>
+            <p style="text-align:center; color:#666; margin-top:15px;">
+                Баа: <strong>${ride.estimated_price} сом</strong>
+            </p>
+            <button class="order-btn" style="background:#f44336; margin-top:15px;" onclick="cancelRide(${ride.id})">
+                ❌ Жокко чыгаруу
+            </button>
+        </div>
+    `;
+
+    // Poll for status updates
+    startRidePolling(ride.id);
+}
+
+function startRidePolling(rideId) {
+    const interval = setInterval(async () => {
+        try {
+            const response = await fetch(`${API_BASE}ride.php?action=status&ride_id=${rideId}`, {
+                headers: { 'Authorization': 'Bearer ' + currentToken }
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.ride) {
+                updateRideStatusUI(data.ride);
+
+                if (['completed', 'cancelled'].includes(data.ride.status)) {
+                    clearInterval(interval);
+                }
+            }
+        } catch (error) {
+            console.error('Poll error:', error);
+        }
+    }, 5000);
+}
+
+function updateRideStatusUI(ride) {
+    const steps = {
+        'pending': 1,
+        'accepted': 2,
+        'driver_arrived': 3,
+        'in_progress': 3,
+        'completed': 4
+    };
+
+    const currentStep = steps[ride.status] || 1;
+
+    for (let i = 1; i <= 4; i++) {
+        const step = document.getElementById(`step${i}`);
+        if (step) {
+            if (i < currentStep) {
+                step.classList.add('completed');
+                step.classList.remove('active');
+            } else if (i === currentStep) {
+                step.classList.add('active');
+            }
+        }
+    }
+}
+
+async function cancelRide(rideId) {
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}ride.php?action=cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({ ride_id: rideId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('Заказ жокко чыгарылды', 'success');
+            showClientPanel();
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Жокко чыгаруу мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ============================================================
+// DRIVER PANEL
+// ============================================================
+function showDriverPanel() {
+    const panel = document.getElementById('panelContent');
+    panel.innerHTML = `
+        <div class="driver-panel">
+            <h3>Айдоочу режими</h3>
+
+            <div class="driver-toggle" id="driverToggle" onclick="toggleDriverStatus()">
+                <i class="fas fa-power-off"></i>
+                <h3 id="toggleText">Офлайн</h3>
+            </div>
+
+            <div class="driver-stats">
+                <div class="stat-card">
+                    <h4 id="statRides">0</h4>
+                    <p>Жүрүштөр</p>
+                </div>
+                <div class="stat-card">
+                    <h4 id="statRating">5.0</h4>
+                    <p>Рейтинг</p>
+                </div>
+                <div class="stat-card">
+                    <h4 id="statEarnings">0</h4>
+                    <p>Табыш (сом)</p>
+                </div>
+            </div>
+
+            <div id="rideRequests" style="margin-top:20px;"></div>
+        </div>
+    `;
+
+    loadDriverStats();
+}
+
+async function toggleDriverStatus() {
+    if (!currentUser || currentUser.role !== 'driver') return;
+
+    const toggle = document.getElementById('driverToggle');
+    const isOnline = toggle.classList.contains('online');
+    const newStatus = isOnline ? 'offline' : 'online';
+
+    showLoading(true);
+
+    try {
+        let lat = KARAKOL_CENTER[0];
+        let lng = KARAKOL_CENTER[1];
+
+        if (newStatus === 'online' && navigator.geolocation) {
+            const pos = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject);
+            });
+            lat = pos.coords.latitude;
+            lng = pos.coords.longitude;
+        }
+
+        const response = await fetch(`${API_BASE}register.php?action=set-status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({
+                status: newStatus,
+                latitude: lat,
+                longitude: lng
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            const toggle = document.getElementById('driverToggle');
+            const statusBadge = document.getElementById('driverStatus');
+
+            if (newStatus === 'online') {
+                toggle.classList.add('online');
+                document.getElementById('toggleText').textContent = 'Онлайн';
+                statusBadge.textContent = 'Онлайн';
+                statusBadge.className = 'header-status status-online';
+                showToast('Сиз онлайн режимдесиз!', 'success');
+                startRideRequestPolling();
+            } else {
+                toggle.classList.remove('online');
+                document.getElementById('toggleText').textContent = 'Офлайн';
+                statusBadge.textContent = 'Офлайн';
+                statusBadge.className = 'header-status status-offline';
+                showToast('Сиз офлайн режимдесиз', 'info');
+            }
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Статус өзгөртүү мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function loadDriverStats() {
+    try {
+        const response = await fetch(`${API_BASE}driver.php?action=statistics&period=today`, {
+            headers: { 'Authorization': 'Bearer ' + currentToken }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('statRides').textContent = data.statistics.total_rides;
+            document.getElementById('statRating').textContent = data.statistics.average_rating.toFixed(1);
+            document.getElementById('statEarnings').textContent = Math.floor(data.statistics.total_earnings);
+        }
+    } catch (error) {
+        console.error('Stats error:', error);
+    }
+}
+
+function startRideRequestPolling() {
+    // Жаңы заказдарды текшерүү
+    const interval = setInterval(async () => {
+        try {
+            const response = await fetch(`${API_BASE}driver.php?action=my-rides&status=pending`, {
+                headers: { 'Authorization': 'Bearer ' + currentToken }
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.rides.length > 0) {
+                showRideRequest(data.rides[0]);
+            }
+        } catch (error) {
+            console.error('Request poll error:', error);
+        }
+    }, 10000);
+}
+
+function showRideRequest(ride) {
+    const container = document.getElementById('rideRequests');
+    container.innerHTML = `
+        <div class="ride-request">
+            <div class="ride-request-header">
+                <div>
+                    <h4>🚕 Жаңы заказ!</h4>
+                    <p style="color:#666; font-size:12px;">${ride.pickup.address}</p>
+                </div>
+                <div class="ride-request-price">${ride.estimated_price} сом</div>
+            </div>
+            <p><i class="fas fa-map-marker-alt" style="color:#4caf50;"></i> ${ride.pickup.address}</p>
+            <p><i class="fas fa-flag" style="color:#f44336;"></i> ${ride.dropoff.address}</p>
+            <div class="ride-request-actions">
+                <button class="btn-accept" onclick="acceptRide(${ride.id})">Кабыл алуу</button>
+                <button class="btn-reject" onclick="rejectRide(${ride.id})">Четке кагуу</button>
+            </div>
+        </div>
+    `;
+}
+
+async function acceptRide(rideId) {
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}driver.php?action=accept-ride`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({ ride_id: rideId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('Жүрүш кабыл алынды!', 'success');
+            showDriverRideStatus(data.ride);
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Кабыл алуу мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function showDriverRideStatus(ride) {
+    const panel = document.getElementById('panelContent');
+    panel.innerHTML = `
+        <div class="ride-status">
+            <h3>🚕 Активдүү жүрүш</h3>
+            <p><strong>Башталыш:</strong> ${ride.pickup.address}</p>
+            <p><strong>Барат:</strong> ${ride.dropoff.address}</p>
+            <p><strong>Баа:</strong> ${ride.estimated_price} сом</p>
+
+            <div style="display:flex; gap:10px; margin-top:15px;">
+                <button class="order-btn" onclick="startRide(${ride.id})">Жүрүштү баштоо</button>
+                <button class="order-btn" style="background:#4caf50;" onclick="completeRide(${ride.id})">Бүтүү</button>
+            </div>
+        </div>
+    `;
+}
+
+async function startRide(rideId) {
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}driver.php?action=start-ride`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({ ride_id: rideId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('Жүрүш башталды!', 'success');
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function completeRide(rideId) {
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE}driver.php?action=complete-ride`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + currentToken
+            },
+            body: JSON.stringify({ ride_id: rideId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('Жүрүш аяктады! Баа: ' + data.ride.actual_price + ' сом', 'success');
+            showDriverPanel();
+            loadDriverStats();
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Мүмкүн болбоду', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ============================================================
+// LOCATION TRACKING
+// ============================================================
+function startLocationTracking() {
+    if (!navigator.geolocation) return;
+
+    watchPositionId = navigator.geolocation.watchPosition(
+        async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            updateMyLocation(lat, lng);
+
+            // Серверге жөнөтүү
+            try {
+                await fetch(`${API_BASE}location.php?action=update-location`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + currentToken
+                    },
+                    body: JSON.stringify({
+                        latitude: lat,
+                        longitude: lng,
+                        heading: pos.coords.heading || 0,
+                        speed: pos.coords.speed || 0,
+                        accuracy: pos.coords.accuracy
+                    })
+                });
+            } catch (error) {
+                console.error('Location update error:', error);
+            }
+        },
+        (error) => console.error('GPS error:', error),
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+    );
+}
+
+function startDriverUpdates() {
+    // Кардар үчүн айдоочуларды жаңыртуу
+    setInterval(async () => {
+        if (currentUser.role !== 'client') return;
+
+        try {
+            const center = map.getCenter();
+            const response = await fetch(
+                `${API_BASE}location.php?action=nearby-drivers&lat=${center.lat}&lng=${center.lng}&radius=5`,
+                { headers: { 'Authorization': 'Bearer ' + currentToken } }
+            );
+
+            const data = await response.json();
+
+            if (data.success) {
+                clearMarkers();
+                data.drivers.forEach(driver => addDriverMarker(driver));
+            }
+        } catch (error) {
+            console.error('Driver update error:', error);
+        }
+    }, 10000);
+}
+
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
+function showLoading(show) {
+    document.getElementById('loadingOverlay').classList.toggle('active', show);
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('notificationToast');
+    document.getElementById('toastMessage').textContent = message;
+    toast.className = 'notification-toast ' + type;
+    toast.classList.add('show');
+
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function showModal(id) {
+    document.getElementById(id).classList.add('active');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+function showProfile() {
+    // Профиль модалын көрсөтүү
+    showToast('Профиль функциясы жакында...', 'info');
+}
+
+async function checkActiveRide() {
+    try {
+        const response = await fetch(`${API_BASE}ride.php?action=active`, {
+            headers: { 'Authorization': 'Bearer ' + currentToken }
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.has_active_ride) {
+            activeRide = data.ride;
+            if (currentUser.role === 'client') {
+                showRideStatus(data.ride);
+            } else {
+                showDriverRideStatus(data.ride);
+            }
+        }
+    } catch (error) {
+        console.error('Active ride check error:', error);
+    }
+}
+
+async function logout() {
+    localStorage.removeItem('taxi_token');
+    localStorage.removeItem('taxi_user');
+    currentUser = null;
+    currentToken = null;
+
+    if (watchPositionId) {
+        navigator.geolocation.clearWatch(watchPositionId);
+    }
+
+    location.reload();
+}
+
+// Modal close on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.classList.remove('active');
+        }
+    });
+});
+</script>
+
+</body>
+</html>

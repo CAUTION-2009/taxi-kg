@@ -1,0 +1,86 @@
+# ============================================================
+# КАРА-КУЛЬ ТАКСИ - Apache конфигурациясы
+# ============================================================
+
+# UTF-8 кодировкасы
+AddDefaultCharset UTF-8
+
+# PHP UTF-8
+php_value default_charset "utf-8"
+
+# CORS башкаруу
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    Header always set Access-Control-Allow-Credentials "true"
+
+    # Preflight запростор үчүн
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ $1 [R=200,L]
+</IfModule>
+
+# URL реврайтинг
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # API папкасына түздөн-түз кирүү
+    RewriteRule ^api/(.*)$ api/$1 [L]
+
+    # index.html бардык запростор үчүн
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# PHP файлдарын коргоо
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# .htaccess файлын коргоо
+<Files .htaccess>
+    Order allow,deny
+    Deny from all
+</Files>
+
+# config.php файлын коргоо
+<Files config.php>
+    Order allow,deny
+    Deny from all
+</Files>
+
+# SQL папкасын коргоо
+<IfModule mod_rewrite.c>
+    RewriteRule ^sql/ - [F,L]
+</IfModule>
+
+# Gzip компрессия
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Кэштоо
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+</IfModule>
+
+# Коопсуздук башкаруу
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# PHP параметрлери
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 300
+php_value max_input_time 300
